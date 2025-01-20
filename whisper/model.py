@@ -162,11 +162,12 @@ class ResidualAttentionBlock(nn.Module):
         x: Tensor,
         xa: Optional[Tensor] = None,
         mask: Optional[Tensor] = None,
+        mask_cross: Optional[Tensor] = None,
         kv_cache: Optional[dict] = None,
     ):
         x = x + self.attn(self.attn_ln(x), mask=mask, kv_cache=kv_cache)[0]
         if self.cross_attn:
-            x = x + self.cross_attn(self.cross_attn_ln(x), xa, kv_cache=kv_cache)[0]
+            x = x + self.cross_attn(self.cross_attn_ln(x), xa, mask=mask_cross, kv_cache=kv_cache)[0]
         x = x + self.mlp(self.mlp_ln(x))
         return x
 
@@ -224,7 +225,7 @@ class TextDecoder(nn.Module):
         mask = torch.empty(n_ctx, n_ctx).fill_(-np.inf).triu_(1)
         self.register_buffer("mask", mask, persistent=False)
 
-    def forward(self, x: Tensor, xa: Tensor, kv_cache: Optional[dict] = None):
+    def forward(self, x: Tensor, xa: Tensor, cross_mask: Optional[Tensor] = None, kv_cache: Optional[dict] = None):
         """
         x : torch.LongTensor, shape = (batch_size, <= n_ctx)
             the text tokens
@@ -239,7 +240,7 @@ class TextDecoder(nn.Module):
         x = x.to(xa.dtype)
 
         for block in self.blocks:
-            x = block(x, xa, mask=self.mask, kv_cache=kv_cache)
+            x = block(x, xa, mask=self.mask, mask_cross=cross_mask ,kv_cache=kv_cache)
 
         x = self.ln(x)
         logits = (
@@ -247,6 +248,12 @@ class TextDecoder(nn.Module):
         ).float()
 
         return logits
+
+    @staticmethod
+    def make_cross_mask():
+        # TODO: implement the creation of a mask using intervalls where speech is not detected
+        pass
+
 
 
 class Whisper(nn.Module):
